@@ -423,7 +423,7 @@ BEGIN
     END IF;
   END PROCESS DivCLK;
   
-  reset_na<=NOT reset OR NOT ioctl_download;
+  reset_na<=NOT reset AND NOT ioctl_download;
   creset<=ioctl_download;
   
 END struct;
