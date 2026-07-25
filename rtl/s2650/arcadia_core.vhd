@@ -26,6 +26,7 @@ ENTITY arcadia_core IS
     ntsc_pal         : IN    std_logic;
     swap             : IN    std_logic;
     swapxy           : IN    std_logic;
+    swap_controllers : IN    std_logic;
     
     -- Base video clock. Usually equals to CLK_SYS.
     clk_video        : OUT   std_logic;
@@ -67,6 +68,7 @@ ARCHITECTURE struct OF arcadia_core IS
   --------------------------------------
   SIGNAL keypad1_1, keypad1_2, keypad1_3 : unsigned(7 DOWNTO 0);
   SIGNAL keypad2_1, keypad2_2, keypad2_3 : unsigned(7 DOWNTO 0);
+  SIGNAL p1_joy, p2_joy : std_logic_vector(31 DOWNTO 0);
   SIGNAL keypanel,  volnoise : unsigned(7 DOWNTO 0);
   
   --------------------------------------
@@ -166,16 +168,19 @@ BEGIN
   -- ENT 0 CLR
   -- start,a,b,enter,clr,0,1,2,3,4,5,6,7,8,9
     
-  keypad1_1<="0000" & joystick_0(10) & joystick_0(13) & joystick_0(16) & joystick_0(8) ; -- 1900 : 1 4 7 CLEAR
-  keypad1_2<="0000" & joystick_0(11) & joystick_0(14) & joystick_0(17) & joystick_0(9) ; -- 1901 : 2 5 8 0
-  keypad1_3<="0000" & joystick_0(12) & joystick_0(15) & joystick_0(18) & joystick_0(7) ; -- 1902 : 3 6 9 ENTER
+  p1_joy <= joystick_1 WHEN swap_controllers='1' ELSE joystick_0;
+  p2_joy <= joystick_0 WHEN swap_controllers='1' ELSE joystick_1;
+
+  keypad1_1<="0000" & p1_joy(10) & p1_joy(13) & p1_joy(16) & p1_joy(8) ; -- 1900 : 1 4 7 CLEAR
+  keypad1_2<="0000" & (p1_joy(11) OR p1_joy(19) OR p1_joy(20)) & p1_joy(14) & p1_joy(17) & p1_joy(9) ; -- 1901 : 2 5 8 0 (fire buttons parallel "2" per PCB schematic)
+  keypad1_3<="0000" & p1_joy(12) & p1_joy(15) & p1_joy(18) & p1_joy(7) ; -- 1902 : 3 6 9 ENTER
   
-  keypad2_1<="0000" & joystick_1(10) & joystick_1(13) & joystick_1(16) & joystick_1(8) ; -- 1904 : 1 4 7 CLEAR
-  keypad2_2<="0000" & joystick_1(11) & joystick_1(14) & joystick_1(17) & joystick_1(9) ; -- 1905 : 2 5 8 0
-  keypad2_3<="0000" & joystick_1(12) & joystick_1(15) & joystick_1(18) & joystick_1(7) ; -- 1906 : 3 6 9 ENTER
+  keypad2_1<="0000" & p2_joy(10) & p2_joy(13) & p2_joy(16) & p2_joy(8) ; -- 1904 : 1 4 7 CLEAR
+  keypad2_2<="0000" & (p2_joy(11) OR p2_joy(19) OR p2_joy(20)) & p2_joy(14) & p2_joy(17) & p2_joy(9) ; -- 1905 : 2 5 8 0 (fire buttons parallel "2" per PCB schematic)
+  keypad2_3<="0000" & p2_joy(12) & p2_joy(15) & p2_joy(18) & p2_joy(7) ; -- 1906 : 3 6 9 ENTER
   
-  keypanel <="00000" & (joystick_0(6) & joystick_0(5) & joystick_0(4)) OR
-                       (joystick_1(6) & joystick_1(5) & joystick_1(4)); -- 1908 : B A START
+  keypanel <="00000" & (p1_joy(6) & p1_joy(5) & p1_joy(4)) OR
+                       (p2_joy(6) & p2_joy(5) & p2_joy(4)); -- 1908 : Option Select Start (Emerson console labeling; A/B are legacy MPT-03 names)
   
   dr_key<=keypad1_1 WHEN ad_delay(3 DOWNTO 0)=x"0" ELSE -- 1900
           keypad1_2 WHEN ad_delay(3 DOWNTO 0)=x"1" ELSE -- 1901

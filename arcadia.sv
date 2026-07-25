@@ -192,26 +192,30 @@ localparam CONF_STR = {
 	//"O5,Video standard,PAL,NTSC;",
 	"O3,Swap Joystick,Off,On;",
 	"O4,Swap Joystick XY,Off,On;",
+	"O8,Swap Controllers,Off,On;",
 	"O67,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
-        "J,Start,A,B,Enter,Clear,0,1,2,3,4,5,6,7,8,9;",
 	"T0,Reset;",
-	"R0,Reset and close OSD;",
+	"R0,Reset and close OSD;;",
+	"J,Start,Select(A),Option(B),Enter,Clear,0,1,2,3,4,5,6,7,8,9,Action,Action2;",
 	"V,v",`BUILD_DATE 
 };
 
 wire forced_scandoubler;
 wire  [1:0] buttons;
-wire [31:0] status;
+wire [63:0] status;
 wire [10:0] ps2_key;
 
 wire        ioctl_download;
-wire [7:0]  ioctl_index;
+wire [15:0] ioctl_index;
 wire        ioctl_wr;
-wire [24:0] ioctl_addr;
-wire [7:0]  ioctl_dout;
+wire [26:0] ioctl_addr;
+wire [15:0] ioctl_dout;
 wire        ioctl_wait;
 wire [31:0] joystick_0,joystick_1;
 wire [15:0] joystick_analog_0,joystick_analog_1;
+
+wire         info_req = 0;
+wire   [7:0] info = 0;
 
 hps_io #(.CONF_STR(CONF_STR)) hps_io
 (
@@ -224,6 +228,9 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 
 	.buttons(buttons),
 	.status(status),
+
+	.info_req(info_req),
+	.info(info),
 	
 	.ioctl_download(ioctl_download),
 	.ioctl_index(ioctl_index),
@@ -275,6 +282,7 @@ arcadia_core arcadia_core
 	.ntsc_pal(1'b1),
 	.swap(status[3]),
 	.swapxy(status[4]),
+	.swap_controllers(status[8]),
 
 	.clk_video(CLK_VIDEO),
 	.ce_pixel(CE_PIXEL),
