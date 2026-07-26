@@ -124,8 +124,32 @@ ARCHITECTURE struct OF arcadia_core IS
   
   SIGNAL vga_r_i,vga_g_i,vga_b_i : uv8;
   
+  -- Auto X/Y swap signals
+  SIGNAL crc32_reg          : unsigned(31 DOWNTO 0);
+  SIGNAL crc32_final        : unsigned(31 DOWNTO 0);
+  SIGNAL ioctl_download_d   : std_logic;
+  SIGNAL dl_start, dl_done  : std_logic;
+  SIGNAL auto_swapxy        : std_logic;
+  SIGNAL swapxy_eff         : std_logic;
+
   FILE fil : text OPEN write_mode IS "trace_mem.log";
   
+  -- Bit-serial reflected CRC-32 (poly 0xEDB88320)
+  FUNCTION crc32_update(crc_in : unsigned(31 DOWNTO 0); data : unsigned(7 DOWNTO 0))
+    RETURN unsigned IS
+    VARIABLE crc : unsigned(31 DOWNTO 0);
+  BEGIN
+    crc := crc_in XOR (x"000000" & data);
+    FOR i IN 0 TO 7 LOOP
+      IF crc(0) = '1' THEN
+        crc := ('0' & crc(31 DOWNTO 1)) XOR x"EDB88320";
+      ELSE
+        crc := '0' & crc(31 DOWNTO 1);
+      END IF;
+    END LOOP;
+    RETURN crc;
+  END FUNCTION;
+
 BEGIN
   
   ----------------------------------------------------------
@@ -260,12 +284,63 @@ BEGIN
       
     END IF;
   END PROCESS Joysticks;
-  
-  potl_h<=mux(swapxy,potl_a,potl_b);
-  potl_v<=mux(swapxy,potl_b,potl_a);
-  potr_h<=mux(swapxy,potr_a,potr_b);
-  potr_v<=mux(swapxy,potr_b,potr_a);
-  
+
+  ----------------------------------------------------------
+  -- Auto X/Y swap detection by cartridge CRC32
+  dl_start <= ioctl_download AND NOT ioctl_download_d;
+  dl_done  <= NOT ioctl_download AND ioctl_download_d;
+
+  ComputeCRC32:PROCESS(clk) IS
+  BEGIN
+    IF rising_edge(clk) THEN
+      ioctl_download_d <= ioctl_download;
+
+      IF dl_start = '1' THEN
+        crc32_reg <= x"FFFFFFFF";
+      ELSIF ioctl_download = '1' AND ioctl_wr = '1' THEN
+        crc32_reg <= crc32_update(crc32_reg, unsigned(ioctl_dout));
+      END IF;
+
+      IF dl_done = '1' THEN
+        crc32_final <= crc32_reg XOR x"FFFFFFFF";
+      END IF;
+    END IF;
+  END PROCESS ComputeCRC32;
+
+  -- Games requiring XY swap on genuine Arcadia hardware (games.h: swapped=TRUE).
+  -- MPT-03 clone releases never appear here — every MPT-03 title is swapped=FALSE.
+  auto_swapxy <= '1' WHEN
+       crc32_final = x"4DA68DF8"  -- 3D Soccer (Emerson version)
+    OR crc32_final = x"1B5BE22A"  -- 3D Soccer (Tele-Fever version)
+    OR crc32_final = x"76E773FA"  -- Crazy Climber
+    OR crc32_final = x"E84DF2EF"  -- Crazy Gobbler
+    OR crc32_final = x"77C19320"  -- Funky Fish
+    OR crc32_final = x"1CEC4B21"  -- Hobo
+    OR crc32_final = x"617EEB43"  -- Hobo (enhanced)
+    OR crc32_final = x"97060A54"  -- Jump Bug (Emerson version)
+    OR crc32_final = x"DC0264B8"  -- Jump Bug (Tele-Fever version)
+    OR crc32_final = x"A0626E23"  -- R2D Tank
+    OR crc32_final = x"A06F284B"  -- Red Clash
+    OR crc32_final = x"06A86F4A"  -- Red Clash (overdump)
+    OR crc32_final = x"E3794A2C"  -- Space Attack (Emerson version)
+    OR crc32_final = x"669632EC"  -- Space Attack (Schmid version)
+    OR crc32_final = x"C91828CB"  -- Space War (Hanimex prototype)
+    OR crc32_final = x"BB88DAEA"  -- Spiders
+    OR crc32_final = x"F9D9EC5B"  -- Spiders (overdump)
+    OR crc32_final = x"E66F362D"  -- The End
+    OR crc32_final = x"566C78A0"  -- The End (enhanced)
+    OR crc32_final = x"306E39C1"  -- Turtles/Turpin
+    ELSE '0';
+
+  -- Manual O4 toggle now acts as an override on top of auto-detection,
+  -- for homebrews/unknown dumps not in the table above.
+  swapxy_eff <= swapxy XOR auto_swapxy;
+
+  potl_h<=mux(swapxy_eff,potl_a,potl_b);
+  potl_v<=mux(swapxy_eff,potl_b,potl_a);
+  potr_h<=mux(swapxy_eff,potr_a,potr_b);
+  potr_v<=mux(swapxy_eff,potr_b,potr_a);
+
   ----------------------------------------------------------
   dr<=dr_uvi WHEN ad_delay(12)='1' AND ad_delay(11 DOWNTO 8)="1000"  ELSE -- UVI Arcadia
       dr_uvi WHEN ad_delay(12)='1' AND ad_delay(11 DOWNTO 7)="10011" ELSE -- UVI Arcadia
@@ -382,7 +457,7 @@ BEGIN
   BEGIN
     IF rising_edge(clk) THEN
       dr_rom<=cart(to_integer(ad_rom(13 DOWNTO 0))); -- 8kB
-      
+
       IF wcart='1' THEN
         -- RAM
         cart(to_integer(ad_rom(13 DOWNTO 0))):=dw;
@@ -398,7 +473,7 @@ BEGIN
         cart(to_integer(w_a)):=w_d;
       END IF;
     END IF;
-  END PROCESS icart2;
+  END PROCESS icart2; 
   
   PROCESS(clk) IS
   BEGIN
@@ -428,7 +503,7 @@ BEGIN
     END IF;
   END PROCESS DivCLK;
   
-  reset_na<=NOT reset AND NOT ioctl_download;
+  reset_na<=NOT reset;
   creset<=ioctl_download;
   
 END struct;
