@@ -26,7 +26,7 @@ module emu
 	input         RESET,
 
 	//Must be passed to hps_io module
-	inout  [48:0] HPS_BUS,
+	inout  [45:0] HPS_BUS,
 
 	//Base video clock. Usually equals to CLK_SYS.
 	output        CLK_VIDEO,
@@ -190,28 +190,34 @@ localparam CONF_STR = {
 	"-;",
 	"F,BIN,Load Cartridge;",
 	//"O5,Video standard,PAL,NTSC;",
-	"O3,Swap Joystick,Off,On;",
 	"O4,Swap Joystick XY,Off,On;",
+	"O8,Swap Controllers,Off,On;",
+	"O9,Pause Core on OSD,Off,On;",
 	"O67,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
-        "J,Start,A,B,Enter,Clear,0,1,2,3,4,5,6,7,8,9;",
 	"T0,Reset;",
 	"R0,Reset and close OSD;",
+	"J,Start,Select(A),Option(B),Enter,Clear,0,1,2,3,4,5,6,7,8,9,Action,Action2;",
 	"V,v",`BUILD_DATE 
 };
 
 wire forced_scandoubler;
 wire  [1:0] buttons;
-wire [31:0] status;
+wire [63:0] status;
 wire [10:0] ps2_key;
+reg   [9:0] kb1_keys, kb2_keys;
+reg kb1_enter, kb1_clear, kb2_enter, kb2_clear;
 
 wire        ioctl_download;
-wire [7:0]  ioctl_index;
+wire [15:0] ioctl_index;
 wire        ioctl_wr;
-wire [24:0] ioctl_addr;
-wire [7:0]  ioctl_dout;
+wire [26:0] ioctl_addr;
+wire [15:0] ioctl_dout;
 wire        ioctl_wait;
 wire [31:0] joystick_0,joystick_1;
 wire [15:0] joystick_analog_0,joystick_analog_1;
+
+wire        info_req = 0;
+wire  [7:0] info = 0;
 
 hps_io #(.CONF_STR(CONF_STR)) hps_io
 (
@@ -224,6 +230,9 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 
 	.buttons(buttons),
 	.status(status),
+
+	.info_req(info_req),
+	.info(info),
 	
 	.ioctl_download(ioctl_download),
 	.ioctl_index(ioctl_index),
@@ -237,11 +246,117 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.joystick_r_analog_0(joystick_analog_0),
 	.joystick_r_analog_1(joystick_analog_1),
 
-	.ps2_key(ps2_key),
+	.ps2_key(ps2_key)
 );
 
+reg old_toggle = 0;
 
-///////////////////////   CLOCKS   ///////////////////////////////
+always @(posedge clksys) begin
+    old_toggle <= ps2_key[10];
+
+    if (old_toggle != ps2_key[10]) begin
+        if (ps2_key[9]) begin  // Press (ps2_key[9]=1 in this framework)
+            case (ps2_key[8:0])
+                'h16: kb1_keys[1] <= 1'b1;
+                'h1E: kb1_keys[2] <= 1'b1;
+                'h26: kb1_keys[3] <= 1'b1;
+                'h15: kb1_keys[4] <= 1'b1;
+                'h1D: kb1_keys[5] <= 1'b1;
+                'h24: kb1_keys[6] <= 1'b1;
+                'h1C: kb1_keys[7] <= 1'b1;
+                'h1B: kb1_keys[8] <= 1'b1;
+                'h23: kb1_keys[9] <= 1'b1;
+                'h1A: kb1_clear   <= 1'b1;
+                'h22: kb1_keys[0] <= 1'b1;
+                'h21: kb1_enter   <= 1'b1;
+                'h47: kb2_keys[1] <= 1'b1;
+                'h48: kb2_keys[2] <= 1'b1;
+                'h49: kb2_keys[3] <= 1'b1;
+                'h4B: kb2_keys[4] <= 1'b1;
+                'h4C: kb2_keys[5] <= 1'b1;
+                'h4D: kb2_keys[6] <= 1'b1;
+                'h4F: kb2_keys[7] <= 1'b1;
+                'h50: kb2_keys[8] <= 1'b1;
+                'h51: kb2_keys[9] <= 1'b1;
+                'h52: kb2_clear   <= 1'b1;
+                'h53: kb2_keys[0] <= 1'b1;
+                'h5A: kb2_enter   <= 1'b1;
+            endcase
+        end else begin  // Release
+            case (ps2_key[8:0])
+                'h16: kb1_keys[1] <= 1'b0;
+                'h1E: kb1_keys[2] <= 1'b0;
+                'h26: kb1_keys[3] <= 1'b0;
+                'h15: kb1_keys[4] <= 1'b0;
+                'h1D: kb1_keys[5] <= 1'b0;
+                'h24: kb1_keys[6] <= 1'b0;
+                'h1C: kb1_keys[7] <= 1'b0;
+                'h1B: kb1_keys[8] <= 1'b0;
+                'h23: kb1_keys[9] <= 1'b0;
+                'h1A: kb1_clear   <= 1'b0;
+                'h22: kb1_keys[0] <= 1'b0;
+                'h21: kb1_enter   <= 1'b0;
+                'h47: kb2_keys[1] <= 1'b0;
+                'h48: kb2_keys[2] <= 1'b0;
+                'h49: kb2_keys[3] <= 1'b0;
+                'h4B: kb2_keys[4] <= 1'b0;
+                'h4C: kb2_keys[5] <= 1'b0;
+                'h4D: kb2_keys[6] <= 1'b0;
+                'h4F: kb2_keys[7] <= 1'b0;
+                'h50: kb2_keys[8] <= 1'b0;
+                'h51: kb2_keys[9] <= 1'b0;
+                'h52: kb2_clear   <= 1'b0;
+                'h53: kb2_keys[0] <= 1'b0;
+                'h5A: kb2_enter   <= 1'b0;
+            endcase
+        end
+    end
+end
+
+// OR keyboard keys into joystick keypad bits before feeding the core
+wire [31:0] joy0_combined, joy1_combined;
+
+// P1 combined
+assign joy0_combined[3:0]   = joystick_0[3:0];                // d-pad
+assign joy0_combined[6:4]   = joystick_0[6:4];                // Start, Select, Option
+assign joy0_combined[7]     = joystick_0[7]  | kb1_enter;     // ENTER
+assign joy0_combined[8]     = joystick_0[8]  | kb1_clear;     // CLEAR
+assign joy0_combined[9]     = joystick_0[9]  | kb1_keys[0];   // 0
+assign joy0_combined[10]    = joystick_0[10] | kb1_keys[1];   // 1
+assign joy0_combined[11]    = joystick_0[11] | kb1_keys[2];   // 2
+assign joy0_combined[12]    = joystick_0[12] | kb1_keys[3];   // 3
+assign joy0_combined[13]    = joystick_0[13] | kb1_keys[4];   // 4
+assign joy0_combined[14]    = joystick_0[14] | kb1_keys[5];   // 5
+assign joy0_combined[15]    = joystick_0[15] | kb1_keys[6];   // 6
+assign joy0_combined[16]    = joystick_0[16] | kb1_keys[7];   // 7
+assign joy0_combined[17]    = joystick_0[17] | kb1_keys[8];   // 8
+assign joy0_combined[18]    = joystick_0[18] | kb1_keys[9];   // 9
+assign joy0_combined[19]    = joystick_0[19] | kb1_keys[2];   // 2 alt
+assign joy0_combined[20]    = joystick_0[20] | kb1_keys[2];   // 2 alt
+
+// P2 combined
+assign joy1_combined[3:0]   = joystick_1[3:0];                // d-pad
+assign joy1_combined[6:4]   = joystick_1[6:4];                // Start, Select, Option
+assign joy1_combined[7]     = joystick_1[7]  | kb2_enter;     // ENTER
+assign joy1_combined[8]     = joystick_1[8]  | kb2_clear;     // CLEAR
+assign joy1_combined[9]     = joystick_1[9]  | kb2_keys[0];   // 0
+assign joy1_combined[10]    = joystick_1[10] | kb2_keys[1];   // 1
+assign joy1_combined[11]    = joystick_1[11] | kb2_keys[2];   // 2
+assign joy1_combined[12]    = joystick_1[12] | kb2_keys[3];   // 3
+assign joy1_combined[13]    = joystick_1[13] | kb2_keys[4];   // 4
+assign joy1_combined[14]    = joystick_1[14] | kb2_keys[5];   // 5
+assign joy1_combined[15]    = joystick_1[15] | kb2_keys[6];   // 6
+assign joy1_combined[16]    = joystick_1[16] | kb2_keys[7];   // 7
+assign joy1_combined[17]    = joystick_1[17] | kb2_keys[8];   // 8
+assign joy1_combined[18]    = joystick_1[18] | kb2_keys[9];   // 9
+assign joy1_combined[19]    = joystick_1[19] | kb2_keys[2];   // 2 alt
+assign joy1_combined[20]    = joystick_1[20] | kb2_keys[2];   // 2 alt
+
+assign joy0_combined[31:21] = joystick_0[31:21];
+assign joy1_combined[31:21] = joystick_1[31:21];
+
+
+/////////////////////// CLOCKS ///////////////////////////////
 
 wire clksys,clksys_ntsc,clksys_pal,pll_locked;
 assign clksys = clksys_pal;
@@ -271,10 +386,12 @@ arcadia_core arcadia_core
 (
 	.clk(clksys),
 	.reset(reset),
+	.OSD_STATUS(OSD_STATUS),
+	.pause_osd(status[9]),
 
 	.ntsc_pal(1'b1),
-	.swap(status[3]),
 	.swapxy(status[4]),
+	.swap_controllers(status[8]),
 
 	.clk_video(CLK_VIDEO),
 	.ce_pixel(CE_PIXEL),
@@ -288,8 +405,8 @@ arcadia_core arcadia_core
 	.sound(sound),
 
 	.ps2_key(ps2_key),
-	.joystick_0(joystick_0),
-	.joystick_1(joystick_1),
+	.joystick_0(joy0_combined),
+	.joystick_1(joy1_combined),
 	.joystick_analog_0(joystick_analog_0),
 	.joystick_analog_1(joystick_analog_1),
 

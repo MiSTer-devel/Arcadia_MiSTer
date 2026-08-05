@@ -19,13 +19,17 @@ ENTITY arcadia_core IS
     -- Master input clock
     clk              : IN    std_logic;
     
+    -- OSD Status needed for pause on OSD
+    OSD_STATUS : IN std_logic;
+    pause_osd  : IN std_logic;
+
     -- Async reset from top-level module. Can be used as initial reset.
     reset            : IN    std_logic;
 
     -- Must be passed to hps_io module
     ntsc_pal         : IN    std_logic;
-    swap             : IN    std_logic;
     swapxy           : IN    std_logic;
+    swap_controllers : IN    std_logic;
     
     -- Base video clock. Usually equals to CLK_SYS.
     clk_video        : OUT   std_logic;
@@ -67,6 +71,7 @@ ARCHITECTURE struct OF arcadia_core IS
   --------------------------------------
   SIGNAL keypad1_1, keypad1_2, keypad1_3 : unsigned(7 DOWNTO 0);
   SIGNAL keypad2_1, keypad2_2, keypad2_3 : unsigned(7 DOWNTO 0);
+  SIGNAL p1_joy, p2_joy : std_logic_vector(31 DOWNTO 0);
   SIGNAL keypanel,  volnoise : unsigned(7 DOWNTO 0);
   
   --------------------------------------
@@ -122,8 +127,34 @@ ARCHITECTURE struct OF arcadia_core IS
   
   SIGNAL vga_r_i,vga_g_i,vga_b_i : uv8;
   
+  -- Auto X/Y swap signals
+  SIGNAL crc32_reg          : unsigned(31 DOWNTO 0);
+  SIGNAL crc32_final        : unsigned(31 DOWNTO 0);
+  SIGNAL ioctl_download_d   : std_logic;
+  SIGNAL dl_start, dl_done  : std_logic;
+  SIGNAL auto_swapxy        : std_logic := '0';
+  SIGNAL swapxy_eff         : std_logic;
+  SIGNAL ctrl_swap          : std_logic := '0';
+  SIGNAL swap_ctrl_eff      : std_logic;
+
   FILE fil : text OPEN write_mode IS "trace_mem.log";
   
+  -- Bit-serial reflected CRC-32 (poly 0xEDB88320)
+  FUNCTION crc32_update(crc_in : unsigned(31 DOWNTO 0); data : unsigned(7 DOWNTO 0))
+    RETURN unsigned IS
+    VARIABLE crc : unsigned(31 DOWNTO 0);
+  BEGIN
+    crc := crc_in XOR (x"000000" & data);
+    FOR i IN 0 TO 7 LOOP
+      IF crc(0) = '1' THEN
+        crc := ('0' & crc(31 DOWNTO 1)) XOR x"EDB88320";
+      ELSE
+        crc := '0' & crc(31 DOWNTO 1);
+      END IF;
+    END LOOP;
+    RETURN crc;
+  END FUNCTION;
+
 BEGIN
   
   ----------------------------------------------------------
@@ -166,16 +197,19 @@ BEGIN
   -- ENT 0 CLR
   -- start,a,b,enter,clr,0,1,2,3,4,5,6,7,8,9
     
-  keypad1_1<="0000" & joystick_0(10) & joystick_0(13) & joystick_0(16) & joystick_0(8) ; -- 1900 : 1 4 7 CLEAR
-  keypad1_2<="0000" & joystick_0(11) & joystick_0(14) & joystick_0(17) & joystick_0(9) ; -- 1901 : 2 5 8 0
-  keypad1_3<="0000" & joystick_0(12) & joystick_0(15) & joystick_0(18) & joystick_0(7) ; -- 1902 : 3 6 9 ENTER
+  p1_joy <= joystick_1 WHEN swap_ctrl_eff='1' ELSE joystick_0;
+  p2_joy <= joystick_0 WHEN swap_ctrl_eff='1' ELSE joystick_1;
+
+  keypad1_1<="0000" & p1_joy(10) & p1_joy(13) & p1_joy(16) & p1_joy(8) ; -- 1900 : 1 4 7 CLEAR
+  keypad1_2<="0000" & (p1_joy(11) OR p1_joy(19) OR p1_joy(20)) & p1_joy(14) & p1_joy(17) & p1_joy(9) ; -- 1901 : 2 5 8 0 (fire buttons parallel "2" per PCB schematic)
+  keypad1_3<="0000" & p1_joy(12) & p1_joy(15) & p1_joy(18) & p1_joy(7) ; -- 1902 : 3 6 9 ENTER
   
-  keypad2_1<="0000" & joystick_1(10) & joystick_1(13) & joystick_1(16) & joystick_1(8) ; -- 1904 : 1 4 7 CLEAR
-  keypad2_2<="0000" & joystick_1(11) & joystick_1(14) & joystick_1(17) & joystick_1(9) ; -- 1905 : 2 5 8 0
-  keypad2_3<="0000" & joystick_1(12) & joystick_1(15) & joystick_1(18) & joystick_1(7) ; -- 1906 : 3 6 9 ENTER
+  keypad2_1<="0000" & p2_joy(10) & p2_joy(13) & p2_joy(16) & p2_joy(8) ; -- 1904 : 1 4 7 CLEAR
+  keypad2_2<="0000" & (p2_joy(11) OR p2_joy(19) OR p2_joy(20)) & p2_joy(14) & p2_joy(17) & p2_joy(9) ; -- 1905 : 2 5 8 0 (fire buttons parallel "2" per PCB schematic)
+  keypad2_3<="0000" & p2_joy(12) & p2_joy(15) & p2_joy(18) & p2_joy(7) ; -- 1906 : 3 6 9 ENTER
   
-  keypanel <="00000" & (joystick_0(6) & joystick_0(5) & joystick_0(4)) OR
-                       (joystick_1(6) & joystick_1(5) & joystick_1(4)); -- 1908 : B A START
+  keypanel <="00000" & (p1_joy(6) & p1_joy(5) & p1_joy(4)) OR
+                       (p2_joy(6) & p2_joy(5) & p2_joy(4)); -- 1908 : Option Select Start (Emerson console labeling; A/B are legacy MPT-03 names)
   
   dr_key<=keypad1_1 WHEN ad_delay(3 DOWNTO 0)=x"0" ELSE -- 1900
           keypad1_2 WHEN ad_delay(3 DOWNTO 0)=x"1" ELSE -- 1901
@@ -191,7 +225,7 @@ BEGIN
   pot2<=potr_v WHEN flag='1' ELSE potr_h;
   pot1<=potl_v WHEN flag='1' ELSE potl_h;
 
-  sound <= std_logic_vector(sound1);
+  sound <= std_logic_vector(sound1) WHEN (OSD_STATUS='0' OR pause_osd='0') ELSE (OTHERS => '0');
   
   ----------------------------------------------------------
   sense <=vrst;
@@ -242,11 +276,10 @@ BEGIN
       END IF;
 
       -------------------------------------------------------------------------------
-      potl_a<=mux(swap,pot1_a,pot0_a);
-      potl_b<=mux(swap,pot1_b,pot0_b);
-      potr_a<=mux(swap,pot0_a,pot1_a);
-      potr_b<=mux(swap,pot0_b,pot1_b);
-      
+      potl_a<=mux(swap_ctrl_eff, pot0_a, pot1_a);
+      potl_b<=mux(swap_ctrl_eff, pot0_b, pot1_b);
+      potr_a<=mux(swap_ctrl_eff, pot1_a, pot0_a);
+      potr_b<=mux(swap_ctrl_eff, pot1_b, pot0_b);
       -------------------------------------------------------------------------------
       IF reset_na='0' THEN
         dpad0<='0';
@@ -255,12 +288,77 @@ BEGIN
       
     END IF;
   END PROCESS Joysticks;
-  
-  potl_h<=mux(swapxy,potl_a,potl_b);
-  potl_v<=mux(swapxy,potl_b,potl_a);
-  potr_h<=mux(swapxy,potr_a,potr_b);
-  potr_v<=mux(swapxy,potr_b,potr_a);
-  
+
+  dl_start <= ioctl_download AND NOT ioctl_download_d;
+  dl_done  <= NOT ioctl_download AND ioctl_download_d;
+
+  ComputeCRC32:PROCESS(clk) IS
+    VARIABLE crc_final : unsigned(31 DOWNTO 0);
+  BEGIN
+    IF rising_edge(clk) THEN
+      ioctl_download_d <= ioctl_download;
+
+      IF dl_start = '1' THEN
+        crc32_reg <= x"FFFFFFFF";
+      ELSIF ioctl_download = '1' AND ioctl_wr = '1' THEN
+        crc32_reg <= crc32_update(crc32_reg, unsigned(ioctl_dout));
+      END IF;
+
+      IF dl_done = '1' THEN
+        crc_final := crc32_reg XOR x"FFFFFFFF";
+        crc32_final <= crc_final;
+
+      END IF;
+    END IF;
+  END PROCESS ComputeCRC32;
+
+
+  auto_swapxy <= '1' WHEN
+       crc32_final = x"4DA68DF8"  -- 3D Soccer (Emerson)
+    OR crc32_final = x"1B5BE22A"  -- 3D Soccer (Tele-Fever)
+    OR crc32_final = x"77C19320"  -- Funky Fish
+    OR crc32_final = x"97060A54"  -- Jump Bug (Emerson)
+    OR crc32_final = x"DC0264B8"  -- Jump Bug (Tele-Fever)
+    OR crc32_final = x"BB88DAEA"  -- Spiders
+    OR crc32_final = x"F9D9EC5B"  -- Spiders (overdump)
+    OR crc32_final = x"E66F362D"  -- The End
+    OR crc32_final = x"566C78A0"  -- The End (enhanced)
+    OR crc32_final = x"306E39C1"  -- Turtles/Turpin
+    ELSE '0';
+
+  ctrl_swap <= '1' WHEN
+       crc32_final = x"4DA68DF8"  -- 3D Soccer (Emerson)
+    OR crc32_final = x"1B5BE22A"  -- 3D Soccer (Tele-Fever)
+    OR crc32_final = x"76E773FA"  -- Crazy Climber
+    OR crc32_final = x"E84DF2EF"  -- Crazy Gobbler
+    OR crc32_final = x"77C19320"  -- Funky Fish
+    OR crc32_final = x"1CEC4B21"  -- Hobo
+    OR crc32_final = x"97060A54"  -- Jump Bug (Emerson)
+    OR crc32_final = x"DC0264B8"  -- Jump Bug (Tele-Fever)
+    OR crc32_final = x"A0626E23"  -- R2D Tank
+    OR crc32_final = x"A06F284B"  -- Red Clash
+    OR crc32_final = x"E3794A2C"  -- Space Attack (Emerson)
+    OR crc32_final = x"669632EC"  -- Space Attack (Schmid)
+    OR crc32_final = x"C91828CB"  -- Space War (prototype)
+    OR crc32_final = x"BB88DAEA"  -- Spiders
+    OR crc32_final = x"E66F362D"  -- The End
+    OR crc32_final = x"306E39C1"  -- Turtles/Turpin
+    OR crc32_final = x"566C78A0"  -- The End (enhanced)
+    OR crc32_final = x"617EEB43"  -- Hobo (enhanced)
+    OR crc32_final = x"06A86F4A"  -- Red Clash (overdump)
+    OR crc32_final = x"F9D9EC5B"  -- Spiders (overdump)
+    ELSE '0';
+
+  -- Manual O4 toggle now acts as an override on top of auto-detection,
+  -- for homebrews/unknown dumps not in the table above.
+  swapxy_eff <= swapxy XOR auto_swapxy;
+  swap_ctrl_eff <= swap_controllers XOR ctrl_swap;
+
+  potl_h<=mux(swapxy_eff,potl_a,potl_b);
+  potl_v<=mux(swapxy_eff,potl_b,potl_a);
+  potr_h<=mux(swapxy_eff,potr_a,potr_b);
+  potr_v<=mux(swapxy_eff,potr_b,potr_a);
+
   ----------------------------------------------------------
   dr<=dr_uvi WHEN ad_delay(12)='1' AND ad_delay(11 DOWNTO 8)="1000"  ELSE -- UVI Arcadia
       dr_uvi WHEN ad_delay(12)='1' AND ad_delay(11 DOWNTO 7)="10011" ELSE -- UVI Arcadia
@@ -393,7 +491,7 @@ BEGIN
         cart(to_integer(w_a)):=w_d;
       END IF;
     END IF;
-  END PROCESS icart2;
+  END PROCESS icart2; 
   
   PROCESS(clk) IS
   BEGIN
@@ -413,7 +511,9 @@ BEGIN
     IF reset_na='0' THEN
       tick_cpu<='0';
     ELSIF rising_edge(clk) THEN
-      IF tick_cpu_cpt=CDIV - 1 THEN
+      IF OSD_STATUS='1' AND pause_osd='1' THEN
+        tick_cpu<='0';
+      ELSIF tick_cpu_cpt=CDIV - 1 THEN
         tick_cpu_cpt<=0;
         tick_cpu<='1';
       ELSE
@@ -423,7 +523,7 @@ BEGIN
     END IF;
   END PROCESS DivCLK;
   
-  reset_na<=NOT reset OR NOT ioctl_download;
+  reset_na<=NOT reset;
   creset<=ioctl_download;
   
 END struct;
