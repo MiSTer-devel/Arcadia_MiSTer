@@ -56,7 +56,10 @@ The list may not be 100% accurate or complete.  Corrections are appreciated.
 
 The Arcadia handheld controller has 18 inputs: a 4-directional disc, two action buttons,
 and a 12-button keypad (0-9, Enter, Clear). Combined with Start, Select, and Option
-on the console, the core maps 21 total inputs.
+on the console, the core maps 21 total inputs. Analog control is supported on the right
+stick. D-pad can also emulate analog input, in either auto-centering or non-auto-centering
+modes. Non-auto-centering works well for Circus, auto-centering works well for Ocean Battle.
+Those are the only two known games that support analog.
 
 ### Button Mapping
 
@@ -159,12 +162,12 @@ Leave Off when adjusting video settings that need a live picture.
 - **Alien Invaders:** graphic corruption, missile launcher is forced to the right.
 - **Basketball:** This game just controls very weird, not a glitch.
 - **Black Jack & Poker:** doesn't boot properly
-- **Circus:** requires analog stick input. Full analog support is planned for a future update.
+- **Circus:** requires analog stick input or D-pad emulation
 - **Crazy Climber:** Missing audio. Graphical issues.
 - **Doraemon:** appears to lock up at the playfield load
 - **Dr. Slump:** graphics corruption, locks up
 - **Escape:** doesn't play right
-- **Frogger:** graphics corruption
+- **Frogger:** graphics corruption - a known ROM issue
 - **Funky Fish:** locks up
 - **Golf:** unable to start
 - **Grand Slam Tennis:** graphics corruption, unable to start
@@ -172,7 +175,7 @@ Leave Off when adjusting video settings that need a live picture.
 - **Horse Racing:** unable to start game
 - **Mobile Soldier Gundam:** graphics corruption, can't start play
 - **Monaco Grand Prix:** controls are just weird, not a glitch
-- **Ocean Battle:** partial analog input. Full analog support is planned for a future update.
+- **Ocean Battle:** analog input supported for ships dropping depth charges
 - **Robot Killer:** unable to control properly
 - **Route 16:** game doesn't start
 - **Star Chess:** graphics corruption
@@ -181,7 +184,14 @@ Leave Off when adjusting video settings that need a live picture.
 
 Unknown issues may exist. Please refer to known working behavior when reporting bugs.
 
-## Changelog
+## Changelog 20260811
+
+- Analog input emulation now available
+- P2 Keyboard buttons fixed. Note that they overlap with the numpad as joystick,
+  but that isn't working anyway.  If numpad as joystick is fixed, they should be moved
+  to different keys, recommended: 8, 9, 0, I, O, P, K, L, ;, comma, period, /.
+
+## Changelog 20260803
 
 - Hardcoded correct stick routing: left stick = P1, right stick = P2 for all games.
 - Fixed controller swap to properly route d-pad and analog inputs.
