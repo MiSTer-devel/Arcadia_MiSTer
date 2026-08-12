@@ -190,7 +190,9 @@ localparam CONF_STR = {
 	"-;",
 	"F,BIN,Load Cartridge;",
 	//"O5,Video standard,PAL,NTSC;",
+	"O3,Auto-Center,On,Off;",
 	"O4,Swap Joystick XY,Off,On;",
+	"O5,D-Pad Analog Emulation,Off,On;",
 	"O8,Swap Controllers,Off,On;",
 	"O9,Pause Core on OSD,Off,On;",
 	"O67,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -255,8 +257,8 @@ always @(posedge clksys) begin
     old_toggle <= ps2_key[10];
 
     if (old_toggle != ps2_key[10]) begin
-        if (ps2_key[9]) begin  // Press (ps2_key[9]=1 in this framework)
-            case (ps2_key[8:0])
+        if (ps2_key[9]) begin  // Press
+            case (ps2_key[7:0])
                 'h16: kb1_keys[1] <= 1'b1;
                 'h1E: kb1_keys[2] <= 1'b1;
                 'h26: kb1_keys[3] <= 1'b1;
@@ -269,21 +271,21 @@ always @(posedge clksys) begin
                 'h1A: kb1_clear   <= 1'b1;
                 'h22: kb1_keys[0] <= 1'b1;
                 'h21: kb1_enter   <= 1'b1;
-                'h47: kb2_keys[1] <= 1'b1;
-                'h48: kb2_keys[2] <= 1'b1;
-                'h49: kb2_keys[3] <= 1'b1;
-                'h4B: kb2_keys[4] <= 1'b1;
-                'h4C: kb2_keys[5] <= 1'b1;
-                'h4D: kb2_keys[6] <= 1'b1;
-                'h4F: kb2_keys[7] <= 1'b1;
-                'h50: kb2_keys[8] <= 1'b1;
-                'h51: kb2_keys[9] <= 1'b1;
-                'h52: kb2_clear   <= 1'b1;
-                'h53: kb2_keys[0] <= 1'b1;
+                'h6C: kb2_keys[1] <= 1'b1;
+                'h75: kb2_keys[2] <= 1'b1;
+                'h7D: kb2_keys[3] <= 1'b1;
+                'h6B: kb2_keys[4] <= 1'b1;
+                'h73: kb2_keys[5] <= 1'b1;
+                'h74: kb2_keys[6] <= 1'b1;
+                'h69: kb2_keys[7] <= 1'b1;
+                'h72: kb2_keys[8] <= 1'b1;
+                'h7A: kb2_keys[9] <= 1'b1;
+                'h70: kb2_clear   <= 1'b1;
+                'h71: kb2_keys[0] <= 1'b1;
                 'h5A: kb2_enter   <= 1'b1;
             endcase
         end else begin  // Release
-            case (ps2_key[8:0])
+            case (ps2_key[7:0])
                 'h16: kb1_keys[1] <= 1'b0;
                 'h1E: kb1_keys[2] <= 1'b0;
                 'h26: kb1_keys[3] <= 1'b0;
@@ -296,17 +298,17 @@ always @(posedge clksys) begin
                 'h1A: kb1_clear   <= 1'b0;
                 'h22: kb1_keys[0] <= 1'b0;
                 'h21: kb1_enter   <= 1'b0;
-                'h47: kb2_keys[1] <= 1'b0;
-                'h48: kb2_keys[2] <= 1'b0;
-                'h49: kb2_keys[3] <= 1'b0;
-                'h4B: kb2_keys[4] <= 1'b0;
-                'h4C: kb2_keys[5] <= 1'b0;
-                'h4D: kb2_keys[6] <= 1'b0;
-                'h4F: kb2_keys[7] <= 1'b0;
-                'h50: kb2_keys[8] <= 1'b0;
-                'h51: kb2_keys[9] <= 1'b0;
-                'h52: kb2_clear   <= 1'b0;
-                'h53: kb2_keys[0] <= 1'b0;
+                'h6C: kb2_keys[1] <= 1'b0;
+                'h75: kb2_keys[2] <= 1'b0;
+                'h7D: kb2_keys[3] <= 1'b0;
+                'h6B: kb2_keys[4] <= 1'b0;
+                'h73: kb2_keys[5] <= 1'b0;
+                'h74: kb2_keys[6] <= 1'b0;
+                'h69: kb2_keys[7] <= 1'b0;
+                'h72: kb2_keys[8] <= 1'b0;
+                'h7A: kb2_keys[9] <= 1'b0;
+                'h70: kb2_clear   <= 1'b0;
+                'h71: kb2_keys[0] <= 1'b0;
                 'h5A: kb2_enter   <= 1'b0;
             endcase
         end
@@ -355,12 +357,172 @@ assign joy1_combined[20]    = joystick_1[20] | kb2_keys[2];   // 2 alt
 assign joy0_combined[31:21] = joystick_0[31:21];
 assign joy1_combined[31:21] = joystick_1[31:21];
 
+// ====================================================================
+// D-PAD ANALOG EMULATION
+// ====================================================================
+// When status[5] is enabled, D-pad presses generate emulated analog
+// values that ramp up over time and decay when released, so an
+// NTT Data controller (D-pad only) can drive analog-sensitive games.
+// The emulated analog replaces joystick_analog_0/1 to the core.
+// ====================================================================
+
+// Ramp prescaler: ~131k clocks per step at ~35.5 MHz gives ~0.5s
+// for a full 0-to-127 sweep (127 steps * 131k = ~16.6M clocks).
+localparam RAMP_PRE = 17'd131071;
+
+// Player 1 emulated analog state
+reg  [16:0] p1_ramp_cnt;       // prescaler counter
+reg   [7:0] p1_analog_x;       // signed: 0x00=center, 0x7F=max+, 0x80=max-
+reg   [7:0] p1_analog_y;       // signed: 0x00=center, 0x7F=max+, 0x80=max-
+reg   [3:0] p1_dpad_d;         // delayed D-pad for edge detection
+
+// Player 2 emulated analog state
+reg  [16:0] p2_ramp_cnt;
+reg   [7:0] p2_analog_x;
+reg   [7:0] p2_analog_y;
+reg   [3:0] p2_dpad_d;
+
+// Muxed analog outputs to the core
+wire [15:0] analog_0_core, analog_1_core;
+
+assign analog_0_core = status[5] ? {p1_analog_x, p1_analog_y} : joystick_analog_0;
+assign analog_1_core = status[5] ? {p2_analog_x, p2_analog_y} : joystick_analog_1;
+
+// D-pad direction bits from the COMBINED joystick (includes keyboard)
+// joystick_0 bits: 0=Up, 1=Down, 2=Left, 3=Right
+wire [3:0] p1_dpad = joy0_combined[3:0];
+wire [3:0] p2_dpad = joy1_combined[3:0];
+
+always @(posedge clksys) begin
+    // ---- Player 1 ----
+    p1_dpad_d <= p1_dpad;
+    
+    // Edge detect: jump prescaler for immediate response
+    if (p1_dpad != 4'd0 && p1_dpad_d == 4'd0)
+        p1_ramp_cnt <= RAMP_PRE;
+    else if (p1_ramp_cnt == RAMP_PRE) begin
+        p1_ramp_cnt <= 17'd0;
+        
+        // X axis (Left/Right)
+        // Real analog stick: Right = negative, Left = positive
+        if (p1_dpad[3] && !p1_dpad[2]) begin
+            // Right pressed, Left not: ramp toward -128 (0x80)
+            if (p1_analog_x[7] == 1'b1 && p1_analog_x != 8'h80)
+                p1_analog_x <= p1_analog_x - 8'd1;
+            else if (p1_analog_x[7] == 1'b0)
+                p1_analog_x <= p1_analog_x - 8'd1;
+        end else if (p1_dpad[2] && !p1_dpad[3]) begin
+            // Left pressed, Right not: ramp toward +127 (0x7F)
+            if (p1_analog_x[7] == 1'b0 && p1_analog_x != 8'h7F)
+                p1_analog_x <= p1_analog_x + 8'd1;
+            else if (p1_analog_x[7] == 1'b1)
+                p1_analog_x <= p1_analog_x + 8'd1;
+        end else begin
+            // Neither or both: decay toward center (0x00) if auto-center enabled
+            if (!status[3]) begin
+                if (p1_analog_x[7] == 1'b0 && p1_analog_x != 8'h00)
+                    p1_analog_x <= p1_analog_x - 8'd1;
+                else if (p1_analog_x[7] == 1'b1 && p1_analog_x != 8'h00)
+                    p1_analog_x <= p1_analog_x + 8'd1;
+            end
+        end
+        
+        // Y axis (Up/Down)
+        // Real analog stick: Down = negative, Up = positive
+        if (p1_dpad[1] && !p1_dpad[0]) begin
+            // Down pressed, Up not: ramp toward -128 (0x80)
+            if (p1_analog_y[7] == 1'b1 && p1_analog_y != 8'h80)
+                p1_analog_y <= p1_analog_y - 8'd1;
+            else if (p1_analog_y[7] == 1'b0)
+                p1_analog_y <= p1_analog_y - 8'd1;
+        end else if (p1_dpad[0] && !p1_dpad[1]) begin
+            // Up pressed, Down not: ramp toward +127 (0x7F)
+            if (p1_analog_y[7] == 1'b0 && p1_analog_y != 8'h7F)
+                p1_analog_y <= p1_analog_y + 8'd1;
+            else if (p1_analog_y[7] == 1'b1)
+                p1_analog_y <= p1_analog_y + 8'd1;
+        end else begin
+            // Neither or both: decay toward center if auto-center enabled
+            if (!status[3]) begin
+                if (p1_analog_y[7] == 1'b0 && p1_analog_y != 8'h00)
+                    p1_analog_y <= p1_analog_y - 8'd1;
+                else if (p1_analog_y[7] == 1'b1 && p1_analog_y != 8'h00)
+                    p1_analog_y <= p1_analog_y + 8'd1;
+            end
+        end
+    end else begin
+        p1_ramp_cnt <= p1_ramp_cnt + 17'd1;
+    end
+    
+    // ---- Player 2 ----
+    p2_dpad_d <= p2_dpad;
+    
+    // Edge detect for immediate response
+    if (p2_dpad != 4'd0 && p2_dpad_d == 4'd0)
+        p2_ramp_cnt <= RAMP_PRE;
+    else if (p2_ramp_cnt == RAMP_PRE) begin
+        p2_ramp_cnt <= 17'd0;
+        
+        // X axis: Right = negative, Left = positive
+        if (p2_dpad[3] && !p2_dpad[2]) begin
+            if (p2_analog_x[7] == 1'b1 && p2_analog_x != 8'h80)
+                p2_analog_x <= p2_analog_x - 8'd1;
+            else if (p2_analog_x[7] == 1'b0)
+                p2_analog_x <= p2_analog_x - 8'd1;
+        end else if (p2_dpad[2] && !p2_dpad[3]) begin
+            if (p2_analog_x[7] == 1'b0 && p2_analog_x != 8'h7F)
+                p2_analog_x <= p2_analog_x + 8'd1;
+            else if (p2_analog_x[7] == 1'b1)
+                p2_analog_x <= p2_analog_x + 8'd1;
+        end else begin
+            if (!status[3]) begin
+                if (p2_analog_x[7] == 1'b0 && p2_analog_x != 8'h00)
+                    p2_analog_x <= p2_analog_x - 8'd1;
+                else if (p2_analog_x[7] == 1'b1 && p2_analog_x != 8'h00)
+                    p2_analog_x <= p2_analog_x + 8'd1;
+            end
+        end
+        
+        // Y axis: Down = negative, Up = positive
+        if (p2_dpad[1] && !p2_dpad[0]) begin
+            if (p2_analog_y[7] == 1'b1 && p2_analog_y != 8'h80)
+                p2_analog_y <= p2_analog_y - 8'd1;
+            else if (p2_analog_y[7] == 1'b0)
+                p2_analog_y <= p2_analog_y - 8'd1;
+        end else if (p2_dpad[0] && !p2_dpad[1]) begin
+            if (p2_analog_y[7] == 1'b0 && p2_analog_y != 8'h7F)
+                p2_analog_y <= p2_analog_y + 8'd1;
+            else if (p2_analog_y[7] == 1'b1)
+                p2_analog_y <= p2_analog_y + 8'd1;
+        end else begin
+            if (!status[3]) begin
+                if (p2_analog_y[7] == 1'b0 && p2_analog_y != 8'h00)
+                    p2_analog_y <= p2_analog_y - 8'd1;
+                else if (p2_analog_y[7] == 1'b1 && p2_analog_y != 8'h00)
+                    p2_analog_y <= p2_analog_y + 8'd1;
+            end
+        end
+    end else begin
+        p2_ramp_cnt <= p2_ramp_cnt + 17'd1;
+    end
+    
+    // Reset all analog state to center
+    if (reset) begin
+        p1_analog_x <= 8'h00;
+        p1_analog_y <= 8'h00;
+        p1_ramp_cnt <= 17'd0;
+        p1_dpad_d   <= 4'd0;
+        p2_analog_x <= 8'h00;
+        p2_analog_y <= 8'h00;
+        p2_ramp_cnt <= 17'd0;
+        p2_dpad_d   <= 4'd0;
+    end
+end
 
 /////////////////////// CLOCKS ///////////////////////////////
 
 wire clksys,clksys_ntsc,clksys_pal,pll_locked;
 assign clksys = clksys_pal;
-
 
 pll pll
 (
@@ -407,8 +569,9 @@ arcadia_core arcadia_core
 	.ps2_key(ps2_key),
 	.joystick_0(joy0_combined),
 	.joystick_1(joy1_combined),
-	.joystick_analog_0(joystick_analog_0),
-	.joystick_analog_1(joystick_analog_1),
+	.joystick_analog_0(analog_0_core),
+	.joystick_analog_1(analog_1_core),
+	.dpad_analog_en(status[5]),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_index(ioctl_index),

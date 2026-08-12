@@ -54,6 +54,7 @@ ENTITY arcadia_core IS
     joystick_1        : IN  std_logic_vector(31 DOWNTO 0);
     joystick_analog_0 : IN  std_logic_vector(15 DOWNTO 0);
     joystick_analog_1 : IN  std_logic_vector(15 DOWNTO 0);
+    dpad_analog_en    : IN  std_logic;
     
     ioctl_download    : IN  std_logic;
     ioctl_index       : IN  std_logic_vector(7 DOWNTO 0);
@@ -246,11 +247,15 @@ BEGIN
         IF joystick_0(3)='1' THEN pot0_a<=x"00"; END IF;
       END IF;
       
-      IF joystick_0(3 DOWNTO 0)/="0000" THEN
-        dpad0<='1';
-      END IF;
-      IF joystick_analog_0(7 DOWNTO 5)="100" OR joystick_analog_0(7 DOWNTO 5)="011" OR
-         joystick_analog_0(15 DOWNTO 13)="100" OR joystick_analog_0(15 DOWNTO 13)="011" THEN
+      IF dpad_analog_en='0' THEN
+        IF joystick_0(3 DOWNTO 0)/="0000" THEN
+          dpad0<='1';
+        END IF;
+        IF joystick_analog_0(7 DOWNTO 5)="100" OR joystick_analog_0(7 DOWNTO 5)="011" OR
+           joystick_analog_0(15 DOWNTO 13)="100" OR joystick_analog_0(15 DOWNTO 13)="011" THEN
+          dpad0<='0';
+        END IF;
+      ELSE
         dpad0<='0';
       END IF;
       
@@ -267,11 +272,15 @@ BEGIN
         IF joystick_1(3)='1' THEN pot1_a<=x"00"; END IF;
       END IF;
       
-      IF joystick_1(3 DOWNTO 0)/="0000" THEN
-        dpad1<='1';
-      END IF;
-      IF joystick_analog_1(7 DOWNTO 5)="100" OR joystick_analog_1(7 DOWNTO 5)="011" OR
-         joystick_analog_1(15 DOWNTO 13)="100" OR joystick_analog_1(15 DOWNTO 13)="011" THEN
+      IF dpad_analog_en='0' THEN
+        IF joystick_1(3 DOWNTO 0)/="0000" THEN
+          dpad1<='1';
+        END IF;
+        IF joystick_analog_1(7 DOWNTO 5)="100" OR joystick_analog_1(7 DOWNTO 5)="011" OR
+           joystick_analog_1(15 DOWNTO 13)="100" OR joystick_analog_1(15 DOWNTO 13)="011" THEN
+          dpad1<='0';
+        END IF;
+      ELSE
         dpad1<='0';
       END IF;
 
