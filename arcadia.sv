@@ -271,18 +271,18 @@ always @(posedge clksys) begin
                 'h1A: kb1_clear   <= 1'b1;
                 'h22: kb1_keys[0] <= 1'b1;
                 'h21: kb1_enter   <= 1'b1;
-                'h6C: kb2_keys[1] <= 1'b1;
-                'h75: kb2_keys[2] <= 1'b1;
-                'h7D: kb2_keys[3] <= 1'b1;
-                'h6B: kb2_keys[4] <= 1'b1;
-                'h73: kb2_keys[5] <= 1'b1;
-                'h74: kb2_keys[6] <= 1'b1;
-                'h69: kb2_keys[7] <= 1'b1;
-                'h72: kb2_keys[8] <= 1'b1;
-                'h7A: kb2_keys[9] <= 1'b1;
-                'h70: kb2_clear   <= 1'b1;
-                'h71: kb2_keys[0] <= 1'b1;
-                'h5A: kb2_enter   <= 1'b1;
+                'h3E: kb2_keys[1] <= 1'b1;
+                'h46: kb2_keys[2] <= 1'b1;
+                'h45: kb2_keys[3] <= 1'b1;
+                'h43: kb2_keys[4] <= 1'b1;
+                'h44: kb2_keys[5] <= 1'b1;
+                'h4D: kb2_keys[6] <= 1'b1;
+                'h42: kb2_keys[7] <= 1'b1;
+                'h4B: kb2_keys[8] <= 1'b1;
+                'h4C: kb2_keys[9] <= 1'b1;
+                'h41: kb2_clear   <= 1'b1;
+                'h49: kb2_keys[0] <= 1'b1;
+                'h4A: kb2_enter   <= 1'b1;
             endcase
         end else begin  // Release
             case (ps2_key[7:0])
@@ -298,18 +298,18 @@ always @(posedge clksys) begin
                 'h1A: kb1_clear   <= 1'b0;
                 'h22: kb1_keys[0] <= 1'b0;
                 'h21: kb1_enter   <= 1'b0;
-                'h6C: kb2_keys[1] <= 1'b0;
-                'h75: kb2_keys[2] <= 1'b0;
-                'h7D: kb2_keys[3] <= 1'b0;
-                'h6B: kb2_keys[4] <= 1'b0;
-                'h73: kb2_keys[5] <= 1'b0;
-                'h74: kb2_keys[6] <= 1'b0;
-                'h69: kb2_keys[7] <= 1'b0;
-                'h72: kb2_keys[8] <= 1'b0;
-                'h7A: kb2_keys[9] <= 1'b0;
-                'h70: kb2_clear   <= 1'b0;
-                'h71: kb2_keys[0] <= 1'b0;
-                'h5A: kb2_enter   <= 1'b0;
+                'h3E: kb2_keys[1] <= 1'b0;
+                'h46: kb2_keys[2] <= 1'b0;
+                'h45: kb2_keys[3] <= 1'b0;
+                'h43: kb2_keys[4] <= 1'b0;
+                'h44: kb2_keys[5] <= 1'b0;
+                'h4D: kb2_keys[6] <= 1'b0;
+                'h42: kb2_keys[7] <= 1'b0;
+                'h4B: kb2_keys[8] <= 1'b0;
+                'h4C: kb2_keys[9] <= 1'b0;
+                'h41: kb2_clear   <= 1'b0;
+                'h49: kb2_keys[0] <= 1'b0;
+                'h4A: kb2_enter   <= 1'b0;
             endcase
         end
     end

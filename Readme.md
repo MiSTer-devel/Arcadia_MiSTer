@@ -100,20 +100,20 @@ the console keyboard to controller buttons.
 
 ### Keyboard Keypad Mapping
 
-| Keypad | P1 Keyboard | P2 Keyboard    |
-|--------|-------------|----------------|
-| 1      | 1           | Numpad 7       |
-| 2      | 2           | Numpad 8       |
-| 3      | 3           | Numpad 9       |
-| 4      | Q           | Numpad 4       |
-| 5      | W           | Numpad 5       |
-| 6      | E           | Numpad 6       |
-| 7      | A           | Numpad 1       |
-| 8      | S           | Numpad 2       |
-| 9      | D           | Numpad 3       |
-| 0      | X           | Numpad 0       |
-| Enter  | C           | Numpad Enter   |
-| Clear  | Z           | Numpad . (Del) |
+| Keypad | P1 Keyboard | P2 Keyboard |
+|--------|-------------|-------------|
+| 1      | 1           | 8           |
+| 2      | 2           | 9           |
+| 3      | 3           | 0           |
+| 4      | Q           | I           |
+| 5      | W           | O           |
+| 6      | E           | P           |
+| 7      | A           | K           |
+| 8      | S           | L           |
+| 9      | D           | ;           |
+| 0      | X           | ,           |
+| Enter  | C           | .           |
+| Clear  | Z           | /           |
 
 ### Auto Controller Swap
 
@@ -183,6 +183,10 @@ Leave Off when adjusting video settings that need a live picture.
 - **Turtles:** Missing energy bar which indicates bomb availability.
 
 Unknown issues may exist. Please refer to known working behavior when reporting bugs.
+
+## Changelog 20260816
+
+- Changed P2 keymapping to not interfere with numpad as joystick
 
 ## Changelog 20260811
 
